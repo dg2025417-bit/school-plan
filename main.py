@@ -1,96 +1,581 @@
+# -*- coding: utf-8 -*-
 """
-스쿨플랜 · School Plan (API 미사용 버전)
-Streamlit + HTML 하이브리드 앱
-"""
-import streamlit as st
-import time
+스쿨플랜 · School Plan  (순수 Streamlit 버전)
 
-# ──────────────────────────────────────────────
-# 페이지 기본 설정 (모바일 호환성 포함)
-# ──────────────────────────────────────────────
+기능
+  1) 시간표     : 요일 × 교시 표 편집 / 조회
+  2) 시험       : 과목 · 날짜 · 범위 관리 (D-day 계산)
+  3) 수행평가   : 과목 · 마감일 · 내용 관리 (D-day 계산)
+  4) To Do List : 할 일 체크 / 삭제
+
+데이터는 실행 폴더의 schoolplan_data.json 파일에 저장됩니다.
+"""
+
+import json
+import os
+import uuid
+from datetime import date, datetime
+
+import streamlit as st
+
+# ══════════════════════════════════════════════════════════
+# 1. 기본 설정
+# ══════════════════════════════════════════════════════════
+DATA_FILE = "schoolplan_data.json"
+DAYS = ["월", "화", "수", "목", "금"]
+PERIODS = [1, 2, 3, 4, 5, 6, 7]
+WEEK_KO = ["월", "화", "수", "목", "금", "토", "일"]
+
 st.set_page_config(
     page_title="스쿨플랜 · School Plan",
     page_icon="🗓️",
     layout="centered",
-    initial_sidebar_state="collapsed",
 )
 
-st.markdown("""
+# ── 디자인 (원본 색상 팔레트 유지) ────────────────────────
+st.markdown(
+    """
     <style>
-        .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-        #MainMenu, footer, header {visibility: hidden;}
-        
-        @media (max-width: 640px) {
-            .app { padding-bottom: 110px; }
-        }
+      .stApp {
+        background: linear-gradient(160deg, #F8F6FD 0%, #F1FAF5 100%);
+      }
+      .block-container { padding-top: 1.5rem; max-width: 780px; }
+      #MainMenu, footer { visibility: hidden; }
+
+      /* 오늘 카드 */
+      .today-card {
+        background: linear-gradient(135deg, #C9B8F5 0%, #A8DFF0 55%, #A8ECD6 100%);
+        border-radius: 26px;
+        padding: 22px 24px;
+        color: #FFFFFF;
+        box-shadow: 0 10px 30px rgba(140,116,214,0.18);
+        margin-bottom: 18px;
+      }
+      .today-day  { font-size: 26px; font-weight: 700; }
+      .today-sub  { font-size: 13px; opacity: 0.92; margin-top: 4px; }
+      .chip-wrap  { margin-top: 14px; }
+      .class-chip {
+        display: inline-block;
+        background: rgba(255,255,255,0.30);
+        padding: 7px 13px;
+        border-radius: 999px;
+        font-size: 13px;
+        margin: 0 6px 6px 0;
+      }
+      .class-chip b { margin-right: 5px; opacity: 0.85; }
+
+      /* 항목 카드 */
+      .item-card {
+        background: #FFFFFF;
+        border-radius: 18px;
+        padding: 14px 18px;
+        box-shadow: 0 3px 10px rgba(140,116,214,0.10);
+        margin-bottom: 4px;
+      }
+      .tag {
+        display: inline-block; color: #fff; font-size: 11.5px; font-weight: 700;
+        padding: 3px 11px; border-radius: 999px; margin-right: 6px;
+      }
+      .tag-exam   { background: #4693C4; }
+      .tag-assign { background: #EE8A52; }
+      .dday       { display:inline-block; font-size: 11.5px; font-weight: 700;
+                    color: #8C74D6; background: #F1ECFC;
+                    padding: 3px 10px; border-radius: 999px; }
+      .dday-today { color: #D96760; background: #FCECEA; }
+      .dday-past  { color: #B0A8C9; background: #F2F0F7; }
+      .item-title { font-size: 15px; font-weight: 700; color: #39324D; margin-top: 6px; }
+      .item-desc  { font-size: 13px; color: #7A7392; margin-top: 3px; line-height: 1.5; }
+
+      /* 빈 상태 */
+      .empty-box {
+        background:#FFFFFF; border-radius:18px; padding:34px 20px;
+        text-align:center; color:#B0A8C9; font-size:13.5px;
+        box-shadow: 0 3px 10px rgba(140,116,214,0.10);
+      }
+      .empty-box .ic { font-size: 30px; display:block; margin-bottom:8px; }
+
+      /* 시간표 셀 */
+      .tt-filled {
+        background: linear-gradient(135deg,#EFE9FC,#E7F6EF);
+        border-radius: 10px; padding: 12px 4px; text-align:center;
+        font-size: 13px; font-weight: 700; color:#39324D; min-height: 44px;
+      }
+      .tt-empty {
+        background: #FBFAFF; border: 1.5px solid #E9E3F8;
+        border-radius: 10px; padding: 12px 4px; text-align:center;
+        font-size: 13px; color:#D5CEE8; min-height: 44px;
+      }
+      .tt-head {
+        text-align:center; font-size:12.5px; font-weight:700; color:#7A7392;
+        padding-bottom: 4px;
+      }
+      .tt-period {
+        text-align:center; font-size:12px; font-weight:700; color:#B0A8C9;
+        padding-top: 14px;
+      }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# ──────────────────────────────────────────────
-# 가상 데이터(Mock) 생성 함수 (API 대체)
-# ──────────────────────────────────────────────
-def mock_extract_data(mode):
-    """API 호출을 대신하여 모드에 맞는 가상(Mock) 결과물을 반환합니다."""
-    time.sleep(2)  # 분석하는 척하는 대기 시간 (2초)
-    
-    if mode == "시간표":
-        return [
-            {"day": "월", "period": 1, "subject": "수학"},
-            {"day": "월", "period": 2, "subject": "영어"},
-            {"day": "화", "period": 1, "subject": "과학"}
+
+# ══════════════════════════════════════════════════════════
+# 2. 데이터 저장 / 불러오기
+# ══════════════════════════════════════════════════════════
+def empty_state() -> dict:
+    """비어 있는 초기 데이터 구조를 만든다."""
+    return {"timetable": {}, "exams": [], "assignments": [], "todos": []}
+
+
+def load_data() -> dict:
+    """JSON 파일에서 데이터를 읽어온다. 없으면 빈 구조 반환."""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            base = empty_state()
+            base.update(data)
+            return base
+        except (json.JSONDecodeError, OSError):
+            return empty_state()
+    return empty_state()
+
+
+def save_data() -> None:
+    """현재 세션 데이터를 JSON 파일로 저장한다."""
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(st.session_state.data, f, ensure_ascii=False, indent=2)
+    except OSError:
+        st.warning("저장에 실패했어요. (읽기 전용 환경일 수 있습니다)")
+
+
+# 세션 초기화 — 앱 실행 중 딱 한 번만 파일을 읽는다
+if "data" not in st.session_state:
+    st.session_state.data = load_data()
+
+DATA = st.session_state.data
+
+
+# ══════════════════════════════════════════════════════════
+# 3. 유틸 함수
+# ══════════════════════════════════════════════════════════
+def new_id() -> str:
+    """중복되지 않는 짧은 ID를 만든다."""
+    return uuid.uuid4().hex[:10]
+
+
+def today_ko() -> str:
+    """오늘 요일을 한글 한 글자로 반환. 예) '월'"""
+    return WEEK_KO[date.today().weekday()]
+
+
+def fmt_date(iso: str) -> str:
+    """'2026-09-15' → '9월 15일'"""
+    if not iso:
+        return "날짜 미정"
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d").date()
+        return f"{d.month}월 {d.day}일"
+    except ValueError:
+        return "날짜 미정"
+
+
+def dday(iso: str):
+    """D-day 라벨과 CSS 클래스를 계산한다."""
+    if not iso:
+        return "날짜 미정", "dday"
+    try:
+        target = datetime.strptime(iso, "%Y-%m-%d").date()
+    except ValueError:
+        return "날짜 미정", "dday"
+
+    diff = (target - date.today()).days
+    if diff == 0:
+        return "D-DAY", "dday dday-today"
+    if diff > 0:
+        return f"D-{diff}", "dday"
+    return "지남", "dday dday-past"
+
+
+def sort_by_date(items: list) -> list:
+    """날짜가 빠른 순으로 정렬 (날짜 없으면 맨 뒤)."""
+    return sorted(items, key=lambda x: x.get("date") or "9999-99-99")
+
+
+# ══════════════════════════════════════════════════════════
+# 4. 상단 : 오늘 카드
+# ══════════════════════════════════════════════════════════
+def render_today_card():
+    today = date.today()
+    day_ko = today_ko()
+
+    # 오늘 수업 찾기
+    if day_ko in ("토", "일"):
+        sub = "주말이에요! 다음 등교일을 준비해보세요"
+        chips = ""
+    else:
+        classes = [
+            (p, DATA["timetable"][f"{day_ko}-{p}"])
+            for p in PERIODS
+            if DATA["timetable"].get(f"{day_ko}-{p}")
         ]
-    elif mode == "시험":
-        return [
-            {"subject": "수학", "date": "2026-09-15", "range": "2단원~3단원"},
-            {"subject": "영어", "date": "2026-09-16", "range": "Lesson 5~6"}
-        ]
-    elif mode == "수행평가":
-        return [
-            {"subject": "국어", "date": "2026-09-20", "content": "독후감 제출"},
-            {"subject": "역사", "date": "2026-09-25", "content": "문화재 조사 보고서"}
-        ]
-    return []
+        if classes:
+            sub = f"오늘 {len(classes)}개의 수업이 있어요"
+            chips = "".join(
+                f'<span class="class-chip"><b>{p}교시</b>{s}</span>' for p, s in classes
+            )
+        else:
+            sub = "아직 등록된 시간표가 없어요"
+            chips = '<span class="class-chip">시간표 탭에서 등록해보세요</span>'
 
-# ──────────────────────────────────────────────
-# 메인 화면 구성 및 사진 업로드
-# ──────────────────────────────────────────────
-st.markdown("## 📷 스마트 스쿨플랜 (오프라인 모드)")
-st.caption("외부 API 없이 로컬에서 동작합니다. (현재는 예시 데이터가 출력됩니다.)")
+    st.markdown(
+        f"""
+        <div class="today-card">
+          <div class="today-day">오늘은 {day_ko}요일</div>
+          <div class="today-sub">{today.month}월 {today.day}일 · {sub}</div>
+          <div class="chip-wrap">{chips}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-modes = ["시간표", "시험", "수행평가"]
-mode = st.radio("무엇을 등록할까요?", modes, horizontal=True)
 
-uploaded_file = st.file_uploader("사진을 촬영하거나 갤러리에서 선택하세요", type=["png", "jpg", "jpeg"])
+st.markdown(
+    "<h2 style='color:#8C74D6; font-weight:700;'>🗓️ 스쿨플랜</h2>",
+    unsafe_allow_html=True,
+)
+render_today_card()
 
-if uploaded_file is not None:
-    st.image(uploaded_file, caption="업로드된 이미지", use_column_width=True)
-    
-    if st.button(f"{mode} 분석하기 (가상 테스트)", use_container_width=True):
-        with st.spinner('이미지를 분석하는 중입니다...'):
-            # API 대신 가상 데이터 생성 함수 호출
-            result = mock_extract_data(mode)
-            
-            if result:
-                st.success("분석 완료! 추출된 데이터를 확인하고 수정하세요.")
-                st.session_state["extracted_data"] = result
 
-# ──────────────────────────────────────────────
-# 추출된 데이터 확인 및 수동 수정 폼
-# ──────────────────────────────────────────────
-if "extracted_data" in st.session_state:
-    st.markdown("### 📝 추출된 일정 확인")
-    
-    # 데이터를 화면에 표시하고 수정할 수 있는 입력 폼 제공
-    with st.form("edit_form"):
-        for i, item in enumerate(st.session_state["extracted_data"]):
-            st.markdown(f"**항목 {i+1}**")
-            cols = st.columns(len(item))
-            for col, (key, value) in zip(cols, item.items()):
-                # 사용자가 텍스트박스에서 값을 직접 수정할 수 있도록 함
-                col.text_input(key.capitalize(), value, key=f"{key}_{i}")
-        
-        submit_btn = st.form_submit_button("최종 저장하기", use_container_width=True)
-        
-        if submit_btn:
-            st.info("데이터가 성공적으로 저장되었습니다! (로컬 DB 또는 세션에 저장 로직을 추가하세요)")
-            del st.session_state["extracted_data"]
+# ══════════════════════════════════════════════════════════
+# 5. 탭 구성
+# ══════════════════════════════════════════════════════════
+tab_tt, tab_exam, tab_assign, tab_todo = st.tabs(
+    ["🗓️ 시간표", "📝 시험", "📌 수행평가", "✅ To Do"]
+)
+
+
+# ──────────────────────────────────────────────────────────
+# 5-1. 시간표 탭
+# ──────────────────────────────────────────────────────────
+with tab_tt:
+    st.markdown("#### 시간표")
+    st.caption("아래에서 요일과 교시를 고른 뒤 과목명을 입력하면 표에 반영돼요.")
+
+    # 입력 폼
+    with st.form("tt_form", clear_on_submit=False):
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            sel_day = st.selectbox("요일", DAYS, key="tt_day")
+        with c2:
+            sel_period = st.selectbox("교시", PERIODS, key="tt_period")
+        with c3:
+            key = f"{sel_day}-{sel_period}"
+            cur = DATA["timetable"].get(key, "")
+            subject = st.text_input("과목명", value=cur, max_chars=12, key="tt_subject")
+
+        b1, b2 = st.columns(2)
+        with b1:
+            submitted = st.form_submit_button("💾 저장", use_container_width=True)
+        with b2:
+            deleted = st.form_submit_button("🗑️ 이 칸 지우기", use_container_width=True)
+
+    if submitted:
+        if subject.strip():
+            DATA["timetable"][key] = subject.strip()
+            save_data()
+            st.success(f"{sel_day}요일 {sel_period}교시 → {subject.strip()}")
+        else:
+            st.warning("과목명을 입력해주세요.")
+        st.rerun()
+
+    if deleted:
+        DATA["timetable"].pop(key, None)
+        save_data()
+        st.info(f"{sel_day}요일 {sel_period}교시를 비웠어요.")
+        st.rerun()
+
+    st.markdown("---")
+
+    # 시간표 그리드 출력
+    head = st.columns([0.6] + [1] * len(DAYS))
+    head[0].markdown("<div class='tt-head'></div>", unsafe_allow_html=True)
+    for i, d in enumerate(DAYS):
+        head[i + 1].markdown(f"<div class='tt-head'>{d}</div>", unsafe_allow_html=True)
+
+    for p in PERIODS:
+        row = st.columns([0.6] + [1] * len(DAYS))
+        row[0].markdown(f"<div class='tt-period'>{p}</div>", unsafe_allow_html=True)
+        for i, d in enumerate(DAYS):
+            val = DATA["timetable"].get(f"{d}-{p}", "")
+            cls = "tt-filled" if val else "tt-empty"
+            txt = val if val else "-"
+            row[i + 1].markdown(
+                f"<div class='{cls}'>{txt}</div>", unsafe_allow_html=True
+            )
+
+    st.markdown("")
+    if DATA["timetable"]:
+        if st.button("전체 시간표 비우기", key="tt_clear"):
+            DATA["timetable"] = {}
+            save_data()
+            st.rerun()
+
+
+# ──────────────────────────────────────────────────────────
+# 5-2. 시험 탭
+# ──────────────────────────────────────────────────────────
+with tab_exam:
+    st.markdown("#### 시험")
+
+    with st.expander("➕ 시험 추가하기", expanded=len(DATA["exams"]) == 0):
+        with st.form("exam_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                e_subject = st.text_input("과목", placeholder="예: 수학", max_chars=20)
+            with c2:
+                e_date = st.date_input("시험 날짜", value=date.today())
+            e_range = st.text_area(
+                "시험 범위", placeholder="예: 2단원 이차방정식 ~ 3단원 이차함수"
+            )
+            if st.form_submit_button("저장", use_container_width=True):
+                if e_subject.strip():
+                    DATA["exams"].append(
+                        {
+                            "id": new_id(),
+                            "subject": e_subject.strip(),
+                            "date": e_date.isoformat(),
+                            "range": e_range.strip(),
+                        }
+                    )
+                    save_data()
+                    st.success("시험을 등록했어요!")
+                    st.rerun()
+                else:
+                    st.warning("과목을 입력해주세요.")
+
+    if not DATA["exams"]:
+        st.markdown(
+            "<div class='empty-box'><span class='ic'>📝</span>"
+            "등록된 시험이 없어요<br>위에서 시험을 추가해보세요</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        for ex in sort_by_date(DATA["exams"]):
+            label, cls = dday(ex["date"])
+            col_a, col_b = st.columns([6, 1])
+            with col_a:
+                desc = (
+                    f"<div class='item-desc'>{ex['range']}</div>" if ex["range"] else ""
+                )
+                st.markdown(
+                    f"""
+                    <div class="item-card">
+                      <span class="tag tag-exam">{ex['subject']}</span>
+                      <span class="{cls}">{label}</span>
+                      <div class="item-title">{fmt_date(ex['date'])}</div>
+                      {desc}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with col_b:
+                if st.button("🗑️", key=f"del_ex_{ex['id']}", help="삭제"):
+                    DATA["exams"] = [x for x in DATA["exams"] if x["id"] != ex["id"]]
+                    save_data()
+                    st.rerun()
+
+
+# ──────────────────────────────────────────────────────────
+# 5-3. 수행평가 탭
+# ──────────────────────────────────────────────────────────
+with tab_assign:
+    st.markdown("#### 수행평가")
+
+    with st.expander("➕ 수행평가 추가하기", expanded=len(DATA["assignments"]) == 0):
+        with st.form("assign_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                a_subject = st.text_input("과목", placeholder="예: 국어", max_chars=20)
+            with c2:
+                a_date = st.date_input("마감 날짜", value=date.today())
+            a_content = st.text_area(
+                "수행평가 내용", placeholder="예: 독서 감상문 A4 1장 제출"
+            )
+            if st.form_submit_button("저장", use_container_width=True):
+                if a_subject.strip():
+                    DATA["assignments"].append(
+                        {
+                            "id": new_id(),
+                            "subject": a_subject.strip(),
+                            "date": a_date.isoformat(),
+                            "content": a_content.strip(),
+                        }
+                    )
+                    save_data()
+                    st.success("수행평가를 등록했어요!")
+                    st.rerun()
+                else:
+                    st.warning("과목을 입력해주세요.")
+
+    if not DATA["assignments"]:
+        st.markdown(
+            "<div class='empty-box'><span class='ic'>📌</span>"
+            "등록된 수행평가가 없어요<br>위에서 추가해보세요</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        for ag in sort_by_date(DATA["assignments"]):
+            label, cls = dday(ag["date"])
+            col_a, col_b = st.columns([6, 1])
+            with col_a:
+                desc = (
+                    f"<div class='item-desc'>{ag['content']}</div>"
+                    if ag["content"]
+                    else ""
+                )
+                st.markdown(
+                    f"""
+                    <div class="item-card">
+                      <span class="tag tag-assign">{ag['subject']}</span>
+                      <span class="{cls}">{label}</span>
+                      <div class="item-title">{fmt_date(ag['date'])} 마감</div>
+                      {desc}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with col_b:
+                if st.button("🗑️", key=f"del_ag_{ag['id']}", help="삭제"):
+                    DATA["assignments"] = [
+                        x for x in DATA["assignments"] if x["id"] != ag["id"]
+                    ]
+                    save_data()
+                    st.rerun()
+
+
+# ──────────────────────────────────────────────────────────
+# 5-4. To Do 탭
+# ──────────────────────────────────────────────────────────
+with tab_todo:
+    st.markdown("#### To Do List")
+
+    with st.form("todo_form", clear_on_submit=True):
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            t_text = st.text_input(
+                "할 일", placeholder="예: 수학 문제집 3장 풀기", max_chars=60
+            )
+        with c2:
+            t_date = st.date_input("날짜", value=date.today())
+        if st.form_submit_button("➕ 추가", use_container_width=True):
+            if t_text.strip():
+                DATA["todos"].insert(
+                    0,
+                    {
+                        "id": new_id(),
+                        "text": t_text.strip(),
+                        "date": t_date.isoformat(),
+                        "done": False,
+                    },
+                )
+                save_data()
+                st.rerun()
+            else:
+                st.warning("할 일을 입력해주세요.")
+
+    st.markdown("---")
+
+    if not DATA["todos"]:
+        st.markdown(
+            "<div class='empty-box'><span class='ic'>✅</span>"
+            "등록된 할 일이 없어요<br>위에서 추가해보세요</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        # 미완료 먼저, 그다음 날짜순
+        todos = sorted(
+            DATA["todos"], key=lambda t: (t["done"], t.get("date") or "9999-99-99")
+        )
+
+        done_cnt = sum(1 for t in todos if t["done"])
+        st.progress(
+            done_cnt / len(todos),
+            text=f"완료 {done_cnt} / 전체 {len(todos)}",
+        )
+
+        for td in todos:
+            c1, c2, c3 = st.columns([0.7, 6, 0.8])
+
+            with c1:
+                checked = st.checkbox(
+                    "완료",
+                    value=td["done"],
+                    key=f"chk_{td['id']}",
+                    label_visibility="collapsed",
+                )
+                if checked != td["done"]:
+                    td["done"] = checked
+                    save_data()
+                    st.rerun()
+
+            with c2:
+                text = td["text"]
+                if td["done"]:
+                    st.markdown(
+                        f"<span style='color:#B0A8C9;text-decoration:line-through;'>"
+                        f"{text}</span> "
+                        f"<span style='font-size:11px;color:#C9C2DC;'>"
+                        f"{fmt_date(td['date'])}</span>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"<span style='color:#39324D;font-weight:500;'>{text}</span> "
+                        f"<span style='font-size:11px;color:#B0A8C9;'>"
+                        f"{fmt_date(td['date'])}</span>",
+                        unsafe_allow_html=True,
+                    )
+
+            with c3:
+                if st.button("🗑️", key=f"del_td_{td['id']}", help="삭제"):
+                    DATA["todos"] = [x for x in DATA["todos"] if x["id"] != td["id"]]
+                    save_data()
+                    st.rerun()
+
+
+# ══════════════════════════════════════════════════════════
+# 6. 하단 : 백업 · 초기화
+# ══════════════════════════════════════════════════════════
+st.markdown("---")
+col_l, col_r = st.columns(2)
+
+with col_l:
+    st.download_button(
+        "⬇️ 내 데이터 백업 (JSON)",
+        data=json.dumps(DATA, ensure_ascii=False, indent=2),
+        file_name="schoolplan_backup.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+with col_r:
+    if st.button("🔄 전체 초기화", use_container_width=True):
+        st.session_state["confirm_reset"] = True
+
+if st.session_state.get("confirm_reset"):
+    st.error("시간표, 시험, 수행평가, 할 일이 **모두 삭제**돼요. 계속할까요?")
+    y, n = st.columns(2)
+    with y:
+        if st.button("네, 초기화합니다", use_container_width=True):
+            st.session_state.data = empty_state()
+            save_data()
+            st.session_state["confirm_reset"] = False
+            st.rerun()
+    with n:
+        if st.button("아니요", use_container_width=True):
+            st.session_state["confirm_reset"] = False
+            st.rerun()
+
+st.caption("데이터는 이 앱이 실행 중인 컴퓨터에 저장돼요.")
