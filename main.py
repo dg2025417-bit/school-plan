@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-스쿨플랜 · School Plan  (순수 Streamlit 버전)
+스쿨플랜 · School Plan  (순수 Streamlit 버전 + 모바일 호환성 추가)
 
 기능
   1) 시간표     : 요일 × 교시 표 편집 / 조회
@@ -30,9 +30,10 @@ st.set_page_config(
     page_title="스쿨플랜 · School Plan",
     page_icon="🗓️",
     layout="centered",
+    initial_sidebar_state="collapsed" # 모바일 최적화를 위해 사이드바 기본 숨김
 )
 
-# ── 디자인 (원본 색상 팔레트 유지) ────────────────────────
+# ── 디자인 (원본 색상 팔레트 유지 + 모바일 미디어 쿼리 추가) ────────────────────────
 st.markdown(
     """
     <style>
@@ -112,6 +113,25 @@ st.markdown(
       .tt-period {
         text-align:center; font-size:12px; font-weight:700; color:#B0A8C9;
         padding-top: 14px;
+      }
+
+      /* =========================================
+         모바일 기기 호환성 추가 (화면 너비 640px 이하)
+         ========================================= */
+      @media (max-width: 640px) {
+        .block-container { padding-top: 1rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+        
+        .today-card { padding: 18px 16px; border-radius: 20px; }
+        .today-day  { font-size: 22px; }
+        .class-chip { font-size: 11.5px; padding: 5px 10px; margin: 0 4px 4px 0; }
+        
+        /* 모바일에서 시간표가 한 줄로 깨지지 않도록 폰트/여백 축소 */
+        .tt-filled, .tt-empty { font-size: 11px; padding: 8px 2px; min-height: 36px; border-radius: 6px; }
+        .tt-head { font-size: 11px; }
+        .tt-period { font-size: 10px; padding-top: 10px; }
+        
+        .item-card { padding: 12px 14px; }
+        .item-title { font-size: 14px; }
       }
     </style>
     """,
