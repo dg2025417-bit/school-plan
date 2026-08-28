@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-스쿨플랜 · School Plan  (순수 Streamlit 버전 + 모바일 가로 스크롤 완벽 방지)
+스쿨플랜 · School Plan  (순수 Streamlit 버전 + 모바일 한 화면 완벽 고정)
 
 기능
-  1) 시간표     : 요일 × 교시 표 편집 / 조회
+  1) 시간표     : 요일 × 교시 표 편집 / 조회 (HTML Grid로 가로 스크롤 완벽 방지)
   2) 시험       : 과목 · 날짜 · 범위 관리 (D-day 계산)
   3) 수행평가   : 과목 · 마감일 · 내용 관리 (D-day 계산)
   4) To Do List : 할 일 체크 / 삭제
@@ -100,16 +100,27 @@ st.markdown(
       }
       .empty-box .ic { font-size: 30px; display:block; margin-bottom:8px; }
 
-      /* 시간표 셀 */
+      /* ★ 시간표 전용 HTML 그리드 (가로 스크롤 완벽 방지) ★ */
+      .timetable-wrapper {
+        display: grid;
+        grid-template-columns: 0.6fr 1fr 1fr 1fr 1fr 1fr;
+        gap: 6px;
+        width: 100%;
+        margin-top: 10px;
+      }
       .tt-filled {
         background: linear-gradient(135deg,#EFE9FC,#E7F6EF);
-        border-radius: 10px; padding: 12px 4px; text-align:center;
-        font-size: 13px; font-weight: 700; color:#39324D; min-height: 44px;
+        border-radius: 10px; padding: 12px 2px; text-align:center;
+        font-size: 13px; font-weight: 700; color:#39324D; 
+        display: flex; align-items: center; justify-content: center;
+        min-height: 44px; word-break: keep-all;
       }
       .tt-empty {
         background: #FBFAFF; border: 1.5px solid #E9E3F8;
-        border-radius: 10px; padding: 12px 4px; text-align:center;
-        font-size: 13px; color:#D5CEE8; min-height: 44px;
+        border-radius: 10px; padding: 12px 2px; text-align:center;
+        font-size: 13px; color:#D5CEE8; 
+        display: flex; align-items: center; justify-content: center;
+        min-height: 44px;
       }
       .tt-head {
         text-align:center; font-size:12.5px; font-weight:700; color:#7A7392;
@@ -117,46 +128,38 @@ st.markdown(
       }
       .tt-period {
         text-align:center; font-size:12px; font-weight:700; color:#B0A8C9;
-        padding-top: 14px;
+        display: flex; align-items: center; justify-content: center;
       }
 
       /* =========================================
-         모바일 기기 전용 (가로 스크롤 완벽 방지)
+         모바일 기기 전용 (글자 및 여백 축소)
          ========================================= */
       @media (max-width: 640px) {
         .block-container { 
           padding-top: 1rem !important; 
-          padding-left: 0.2rem !important; 
-          padding-right: 0.2rem !important; 
+          padding-left: 0.5rem !important; 
+          padding-right: 0.5rem !important; 
         }
         
-        /* ★ 핵심: Streamlit의 컬럼 간격(gap)을 없애서 한 화면에 우겨넣음 */
-        div[data-testid="stHorizontalBlock"] {
-          flex-wrap: nowrap !important;
-          gap: 2px !important; 
+        .today-card { padding: 16px 16px; border-radius: 20px; }
+        .today-day  { font-size: 22px; }
+        .class-chip { font-size: 11.5px; padding: 5px 10px; margin: 0 4px 4px 0; }
+        
+        /* 모바일용 시간표 그리드 조정 (간격을 극단적으로 줄임) */
+        .timetable-wrapper {
+          gap: 3px;
         }
-        div[data-testid="column"] {
-          min-width: 0 !important; 
-          width: 100% !important;
-        }
-
-        /* 시간표 글자와 여백을 극단적으로 줄여서 한 줄에 맞춤 */
         .tt-filled, .tt-empty { 
-          font-size: 10px; 
+          font-size: 10.5px; 
           padding: 6px 1px; 
-          min-height: 32px; 
-          border-radius: 4px; 
-          word-break: break-all; /* 글자가 길면 가로로 안 커지고 줄바꿈됨 */
-          line-height: 1.2;
+          min-height: 36px; 
+          border-radius: 6px; 
+          word-break: break-all; /* 긴 과목명이 모바일에서 줄바꿈되도록 강제 */
         }
-        .tt-head { font-size: 10px; }
-        .tt-period { font-size: 9px; padding-top: 8px; }
+        .tt-head { font-size: 10.5px; }
+        .tt-period { font-size: 10px; }
         
-        /* 카드형 UI 여백 최적화 */
-        .today-card { padding: 16px 12px; border-radius: 16px; }
-        .today-day  { font-size: 20px; }
-        .class-chip { font-size: 11px; padding: 4px 8px; margin: 0 4px 4px 0; }
-        .item-card { padding: 12px 10px; }
+        .item-card { padding: 12px; }
         .item-title { font-size: 14px; }
       }
     </style>
@@ -169,12 +172,10 @@ st.markdown(
 # 2. 데이터 저장 / 불러오기
 # ══════════════════════════════════════════════════════════
 def empty_state() -> dict:
-    """비어 있는 초기 데이터 구조를 만든다."""
     return {"timetable": {}, "exams": [], "assignments": [], "todos": []}
 
 
 def load_data() -> dict:
-    """JSON 파일에서 데이터를 읽어온다. 없으면 빈 구조 반환."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -188,7 +189,6 @@ def load_data() -> dict:
 
 
 def save_data() -> None:
-    """현재 세션 데이터를 JSON 파일로 저장한다."""
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(st.session_state.data, f, ensure_ascii=False, indent=2)
@@ -196,7 +196,6 @@ def save_data() -> None:
         st.warning("저장에 실패했어요. (읽기 전용 환경일 수 있습니다)")
 
 
-# 세션 초기화 — 앱 실행 중 딱 한 번만 파일을 읽는다
 if "data" not in st.session_state:
     st.session_state.data = load_data()
 
@@ -207,17 +206,14 @@ DATA = st.session_state.data
 # 3. 유틸 함수
 # ══════════════════════════════════════════════════════════
 def new_id() -> str:
-    """중복되지 않는 짧은 ID를 만든다."""
     return uuid.uuid4().hex[:10]
 
 
 def today_ko() -> str:
-    """오늘 요일을 한글 한 글자로 반환. 예) '월'"""
     return WEEK_KO[date.today().weekday()]
 
 
 def fmt_date(iso: str) -> str:
-    """'2026-09-15' → '9월 15일'"""
     if not iso:
         return "날짜 미정"
     try:
@@ -228,7 +224,6 @@ def fmt_date(iso: str) -> str:
 
 
 def dday(iso: str):
-    """D-day 라벨과 CSS 클래스를 계산한다."""
     if not iso:
         return "날짜 미정", "dday"
     try:
@@ -245,7 +240,6 @@ def dday(iso: str):
 
 
 def sort_by_date(items: list) -> list:
-    """날짜가 빠른 순으로 정렬 (날짜 없으면 맨 뒤)."""
     return sorted(items, key=lambda x: x.get("date") or "9999-99-99")
 
 
@@ -256,7 +250,6 @@ def render_today_card():
     today = date.today()
     day_ko = today_ko()
 
-    # 오늘 수업 찾기
     if day_ko in ("토", "일"):
         sub = "주말이에요! 다음 등교일을 준비해보세요"
         chips = ""
@@ -303,13 +296,12 @@ tab_tt, tab_exam, tab_assign, tab_todo = st.tabs(
 
 
 # ──────────────────────────────────────────────────────────
-# 5-1. 시간표 탭
+# 5-1. 시간표 탭 (HTML Grid 렌더링 방식)
 # ──────────────────────────────────────────────────────────
 with tab_tt:
     st.markdown("#### 시간표")
     st.caption("아래에서 요일과 교시를 고른 뒤 과목명을 입력하면 표에 반영돼요.")
 
-    # 입력 폼
     with st.form("tt_form", clear_on_submit=False):
         c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
@@ -344,24 +336,29 @@ with tab_tt:
 
     st.markdown("---")
 
-    # 시간표 그리드 출력 (교시열과 요일열의 비율을 모바일에서도 균형있게 유지)
-    head = st.columns([0.6] + [1] * len(DAYS))
-    head[0].markdown("<div class='tt-head'></div>", unsafe_allow_html=True)
-    for i, d in enumerate(DAYS):
-        head[i + 1].markdown(f"<div class='tt-head'>{d}</div>", unsafe_allow_html=True)
-
+    # 가로 스크롤 방지를 위해 Streamlit Columns 대신 순수 HTML/CSS Grid로 그리기
+    html_grid = '<div class="timetable-wrapper">'
+    
+    # 요일 헤더
+    html_grid += '<div class="tt-head"></div>'
+    for d in DAYS:
+        html_grid += f'<div class="tt-head">{d}</div>'
+        
+    # 교시 본문
     for p in PERIODS:
-        row = st.columns([0.6] + [1] * len(DAYS))
-        row[0].markdown(f"<div class='tt-period'>{p}</div>", unsafe_allow_html=True)
-        for i, d in enumerate(DAYS):
+        html_grid += f'<div class="tt-period">{p}</div>'
+        for d in DAYS:
             val = DATA["timetable"].get(f"{d}-{p}", "")
             cls = "tt-filled" if val else "tt-empty"
             txt = val if val else "-"
-            row[i + 1].markdown(
-                f"<div class='{cls}'>{txt}</div>", unsafe_allow_html=True
-            )
+            html_grid += f'<div class="{cls}">{txt}</div>'
+            
+    html_grid += '</div>'
+    
+    # 화면 출력
+    st.markdown(html_grid, unsafe_allow_html=True)
 
-    st.markdown("")
+    st.markdown("<br>", unsafe_allow_html=True)
     if DATA["timetable"]:
         if st.button("전체 시간표 비우기", key="tt_clear"):
             DATA["timetable"] = {}
@@ -540,7 +537,6 @@ with tab_todo:
             unsafe_allow_html=True,
         )
     else:
-        # 미완료 먼저, 그다음 날짜순
         todos = sorted(
             DATA["todos"], key=lambda t: (t["done"], t.get("date") or "9999-99-99")
         )
@@ -552,7 +548,7 @@ with tab_todo:
         )
 
         for td in todos:
-            c1, c2, c3 = st.columns([0.7, 6, 0.8])
+            c1, c2, c3 = st.columns([1, 6, 1])
 
             with c1:
                 checked = st.checkbox(
