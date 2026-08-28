@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-스쿨플랜 · School Plan  (순수 Streamlit 버전 + PC 화면 모바일 강제 고정)
+스쿨플랜 · School Plan  (순수 Streamlit 버전 + 모바일 화면 자동 맞춤)
 
 기능
   1) 시간표     : 요일 × 교시 표 편집 / 조회
@@ -33,7 +33,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── 디자인 (모바일에서도 PC 레이아웃 강제 유지) ────────────────────────
+# ── 디자인 (모바일 기기 크기에 맞춰 알맞게 줄어들도록 설정) ────────────────────────
 st.markdown(
     """
     <style>
@@ -41,28 +41,12 @@ st.markdown(
         background: linear-gradient(160deg, #F8F6FD 0%, #F1FAF5 100%);
       }
       
-      /* 앱 너비를 PC 사이즈로 강제 고정하여 모바일에서 깨지지 않게 설정 */
       .block-container { 
         padding-top: 1.5rem; 
         max-width: 780px; 
-        min-width: 780px !important; 
-        overflow-x: hidden; 
       }
       
       #MainMenu, footer { visibility: hidden; }
-
-      /* 모바일에서 Streamlit이 자동으로 표(컬럼)를 세로로 꺾는 것을 방지 */
-      @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] {
-          flex-direction: row !important;
-          flex-wrap: nowrap !important;
-        }
-        div[data-testid="column"] {
-          width: auto !important;
-          flex: 1 1 0% !important;
-          min-width: auto !important;
-        }
-      }
 
       /* 오늘 카드 */
       .today-card {
@@ -134,6 +118,38 @@ st.markdown(
       .tt-period {
         text-align:center; font-size:12px; font-weight:700; color:#B0A8C9;
         padding-top: 14px;
+      }
+
+      /* =========================================
+         모바일 기기 전용 (화면이 작아질 때 크기 자동 조절)
+         ========================================= */
+      @media (max-width: 640px) {
+        .block-container { 
+          padding-top: 1rem; 
+          padding-left: 0.5rem; 
+          padding-right: 0.5rem; 
+        }
+        
+        /* 모바일에서 Streamlit이 표(컬럼)를 세로로 무너뜨리지 않도록 방지 */
+        div[data-testid="stHorizontalBlock"] {
+          flex-wrap: nowrap !important;
+        }
+        div[data-testid="column"] {
+          min-width: 0 !important; 
+          width: 100% !important;
+        }
+
+        /* 모바일 화면 너비에 맞게 글자 크기와 여백 축소 */
+        .today-card { padding: 16px 16px; border-radius: 20px; }
+        .today-day  { font-size: 22px; }
+        .class-chip { font-size: 11px; padding: 5px 9px; margin: 0 4px 4px 0; }
+        
+        .tt-filled, .tt-empty { font-size: 11px; padding: 8px 1px; min-height: 36px; border-radius: 6px; }
+        .tt-head { font-size: 11px; }
+        .tt-period { font-size: 10px; padding-top: 10px; }
+        
+        .item-card { padding: 12px; }
+        .item-title { font-size: 14px; }
       }
     </style>
     """,
