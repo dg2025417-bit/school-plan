@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-스쿨플랜 · School Plan  (순수 Streamlit 버전 + 모바일 화면 자동 맞춤)
+스쿨플랜 · School Plan  (순수 Streamlit 버전 + 모바일 가로 스크롤 완벽 방지)
 
 기능
   1) 시간표     : 요일 × 교시 표 편집 / 조회
@@ -121,34 +121,42 @@ st.markdown(
       }
 
       /* =========================================
-         모바일 기기 전용 (화면이 작아질 때 크기 자동 조절)
+         모바일 기기 전용 (가로 스크롤 완벽 방지)
          ========================================= */
       @media (max-width: 640px) {
         .block-container { 
-          padding-top: 1rem; 
-          padding-left: 0.5rem; 
-          padding-right: 0.5rem; 
+          padding-top: 1rem !important; 
+          padding-left: 0.2rem !important; 
+          padding-right: 0.2rem !important; 
         }
         
-        /* 모바일에서 Streamlit이 표(컬럼)를 세로로 무너뜨리지 않도록 방지 */
+        /* ★ 핵심: Streamlit의 컬럼 간격(gap)을 없애서 한 화면에 우겨넣음 */
         div[data-testid="stHorizontalBlock"] {
           flex-wrap: nowrap !important;
+          gap: 2px !important; 
         }
         div[data-testid="column"] {
           min-width: 0 !important; 
           width: 100% !important;
         }
 
-        /* 모바일 화면 너비에 맞게 글자 크기와 여백 축소 */
-        .today-card { padding: 16px 16px; border-radius: 20px; }
-        .today-day  { font-size: 22px; }
-        .class-chip { font-size: 11px; padding: 5px 9px; margin: 0 4px 4px 0; }
+        /* 시간표 글자와 여백을 극단적으로 줄여서 한 줄에 맞춤 */
+        .tt-filled, .tt-empty { 
+          font-size: 10px; 
+          padding: 6px 1px; 
+          min-height: 32px; 
+          border-radius: 4px; 
+          word-break: break-all; /* 글자가 길면 가로로 안 커지고 줄바꿈됨 */
+          line-height: 1.2;
+        }
+        .tt-head { font-size: 10px; }
+        .tt-period { font-size: 9px; padding-top: 8px; }
         
-        .tt-filled, .tt-empty { font-size: 11px; padding: 8px 1px; min-height: 36px; border-radius: 6px; }
-        .tt-head { font-size: 11px; }
-        .tt-period { font-size: 10px; padding-top: 10px; }
-        
-        .item-card { padding: 12px; }
+        /* 카드형 UI 여백 최적화 */
+        .today-card { padding: 16px 12px; border-radius: 16px; }
+        .today-day  { font-size: 20px; }
+        .class-chip { font-size: 11px; padding: 4px 8px; margin: 0 4px 4px 0; }
+        .item-card { padding: 12px 10px; }
         .item-title { font-size: 14px; }
       }
     </style>
@@ -336,7 +344,7 @@ with tab_tt:
 
     st.markdown("---")
 
-    # 시간표 그리드 출력
+    # 시간표 그리드 출력 (교시열과 요일열의 비율을 모바일에서도 균형있게 유지)
     head = st.columns([0.6] + [1] * len(DAYS))
     head[0].markdown("<div class='tt-head'></div>", unsafe_allow_html=True)
     for i, d in enumerate(DAYS):
